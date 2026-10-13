@@ -63,6 +63,7 @@ Version 4 of the Iceberg spec restructures metadata for improved performance and
 
 * Support for [relative locations](#file-locations-in-metadata) in metadata fields
 * Writing new [equality deletes](#equality-delete-files) is no longer allowed
+* New data type: `vector`
 
 The full set of changes are listed in [Appendix E](#version-4).
 
@@ -284,6 +285,7 @@ Supported primitive types are defined in the table below. Primitive types added 
 |                  | **`binary`**       | Arbitrary-length byte array                                              |                                                  |
 | [v3](#version-3) | **`geometry(C)`**  | Geospatial features from [OGC – Simple feature access][1001]. Edge-interpolation is always linear/planar. See [Appendix G](#appendix-g-geospatial-notes). Parameterized by CRS C. If not specified, C is `OGC:CRS84`. |                                                        |
 | [v3](#version-3) | **`geography(C, A)`**  | Geospatial features from [OGC – Simple feature access][1001]. See [Appendix G](#appendix-g-geospatial-notes). Parameterized by CRS C and edge-interpolation algorithm A. If not specified, C is `OGC:CRS84` and A is `spherical`. |
+| [v4](#version-4) | **`vector(T, D)`** | Fixed-length numeric vector of `D` values of type `T`. See [Vector](#vector). | `T` must be `int`, `long`, `float`, or `double`; `D` must be a positive integer |
 
 Notes:
 
@@ -322,6 +324,18 @@ For `geography` types, an additional parameter A specifies an algorithm for inte
 * `andoyer`: Thomas, Paul D. Mathematical models for navigation systems. US Naval Oceanographic Office, 1965.
 * `karney`: [Karney, Charles FF. "Algorithms for geodesics." Journal of Geodesy 87 (2013): 43-55](https://link.springer.com/content/pdf/10.1007/s00190-012-0578-z.pdf), and [GeographicLib](https://geographiclib.sourceforge.io/)
 
+##### Vector
+
+A **`vector(T, D)`** is a fixed-length sequence of `D` values of primitive type `T`.
+
+The element type `T` must be one of `int`, `long`, `float`, or `double`. The dimension `D` must be a positive integer.
+
+A vector value is either null or contains exactly `D` non-null finite elements. `float` and `double` element values must not be NaN or ±Infinity.
+
+`vector` is a primitive type. Elements are not independently addressable and are not assigned field IDs.
+
+Writers must reject a vector value that does not contain exactly `D` non-null finite elements of type `T`. Readers must fail if a stored vector does not contain exactly `D` elements or contains a non-finite element.
+
 #### Default values
 
 Default values can be tracked for struct fields (both nested structs and the top-level schema's struct). There can be two defaults with a field:
@@ -333,7 +347,7 @@ The `initial-default` is set only when a field is added to an existing schema. T
 
 The `initial-default` and `write-default` produce SQL default value behavior, without rewriting data files. SQL default value behavior when a field is added handles all existing rows as though the rows were written with the new field's default value. Default value changes may only affect future records and all known fields are written into data files. Omitting a known field when writing a data file is never allowed. The write default for a field must be written if a field is not supplied to a write. If the write default for a required field is not set, the writer must fail.
 
-All columns of `unknown`, `variant`, `geometry`, and `geography` types must default to null. Non-null values for `initial-default` or `write-default` are invalid.
+All columns of `unknown`, `variant`, `geometry`, `geography`, and `vector` types must default to null. Non-null values for `initial-default` or `write-default` are invalid.
 
 Default values for the fields of a struct are tracked as `initial-default` and `write-default` at the field level. Default values for fields that are nested structs must not contain default values for the struct's fields (sub-fields). Sub-field defaults are tracked in sub-field's metadata. As a result, the default stored for a nested struct may be either null or a non-null struct with no field values. The effective default value is produced by setting each fields' default in a new struct.
 
@@ -384,7 +398,7 @@ Type promotion is not allowed for a field that is referenced by `source-id` or `
 
 Any struct, including a top-level schema, can evolve through deleting fields, adding new fields, renaming existing fields, reordering existing fields, or promoting a primitive using the valid type promotions. Adding a new field assigns a new ID for that field and for any nested fields. Renaming an existing field must change the name, but not the field ID. Deleting a field removes it from the current schema. Field deletion cannot be rolled back unless the field was nullable or if the current snapshot has not changed.
 
-Grouping a subset of a struct’s fields into a nested struct is **not** allowed, nor is moving fields from a nested struct into its immediate parent struct (`struct<a, b, c> ↔ struct<a, struct<b, c>>`). Evolving primitive types to structs is **not** allowed, nor is evolving a single-field struct to a primitive (`map<string, int> ↔ map<string, struct<int>>`).
+Grouping a subset of a struct’s fields into a nested struct is **not** allowed, nor is moving fields from a nested struct into its immediate parent struct (`struct<a, b, c> ↔ struct<a, struct<b, c>>`). Evolving primitive types to structs is **not** allowed, nor is evolving a single-field struct to a primitive (`map<string, int> ↔ map<string, struct<int>>`). Evolving `list<T>` to `vector(T, D)` or `vector(T, D)` to `list<T>` is **not** allowed.
 
 Struct evolution requires the following rules for default values:
 
@@ -434,7 +448,7 @@ A schema can optionally track the set of primitive fields that identify rows in 
 
 Two rows are the "same"---that is, the rows represent the same entity---if the identifier fields are equal. However, uniqueness of rows by this identifier is not guaranteed or required by Iceberg and it is the responsibility of processing engines or data providers to enforce.
 
-Identifier fields may be nested in structs but cannot be nested within maps or lists. Float, double, and optional fields cannot be used as identifier fields and a nested field cannot be used as an identifier field if it is nested in an optional struct, to avoid null values in identifiers.
+Identifier fields may be nested in structs but cannot be nested within maps or lists. Float, double, `vector`, and optional fields cannot be used as identifier fields and a nested field cannot be used as an identifier field if it is nested in an optional struct, to avoid null values in identifiers.
 
 #### Reserved Field IDs
 
@@ -570,7 +584,7 @@ Partition field IDs must be reused if an existing partition spec contains an equ
 
 | Transform name    | Description                                                  | Source types                                                                                              | Result type |
 |-------------------|--------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-------------|
-| **`identity`**    | Source value, unmodified                                     | Any primitive except for `geometry` and `geography` | Source type |
+| **`identity`**    | Source value, unmodified                                     | Any primitive except for `geometry`, `geography`, and `vector` | Source type |
 | **`bucket[N]`**   | Hash of value, mod `N` (see below)                           | `int`, `long`, `decimal`, `date`, `time`, `timestamp`, `timestamptz`, `timestamp_ns`, `timestamptz_ns`, `string`, `uuid`, `fixed`, `binary` | `int`       |
 | **`truncate[W]`** | Value truncated to width `W` (see below)                     | `int`, `long`, `decimal`, `string`, `binary`                                                              | Source type |
 | **`year`**        | Extract a date or timestamp year, as years from 1970         | `date`, `timestamp`, `timestamptz`, `timestamp_ns`, `timestamptz_ns`                                      | `int`       |
@@ -764,7 +778,7 @@ In v3 and earlier, metrics are stored in maps keyed by field id: `value_counts`,
 
 In v4, metrics are stored as typed values in the `content_stats` struct, documented in the [Content Stats](#content-stats) section.
 
-Both representations store equivalent information. If a map or id in a map is missing in v3, it is equivalent to a `null` value or missing field struct in v4. Lower bounds must be less than or equal to all non-null and non-NaN values and upper bounds must be greater than or equal to all non-null and non-NaN values.
+Both representations store equivalent information. If a map or id in a map is missing in v3, it is equivalent to a `null` value or missing field struct in v4. Lower bounds must be less than or equal to all non-null and non-NaN values and upper bounds must be greater than or equal to all non-null and non-NaN values. Lower and upper bounds must not be written for `vector` fields.
 
 For delete files, metrics must store bounds and counts for all deleted rows, or must be omitted. Storing metrics for deleted rows ensures that the values can be used during job planning to find delete files that must be merged during a scan.
 
@@ -821,9 +835,9 @@ Each stats struct holds statistics for one table field. It may contain the follo
 
 | Requirement | Offset | Name                      | Type                      | Included for                                  | Description |
 |-------------|--------|---------------------------|---------------------------|-----------------------------------------------|-------------|
-| _optional_  | 1      | `lower_bound`             | Field type or `geo_lower` | all primitives or `variant`                   | Lower bound stored as the field's type, or `geo_lower` for geo types |
-| _optional_  | 2      | `upper_bound`             | Field type or `geo_upper` | all primitives or `variant`                   | Upper bound stored as the field's type, or `geo_upper` for geo types |
-| _optional_  | 3      | `tight_bounds`            | `boolean`                 | all primitives except for `geometry` and `geography` | When true, `lower_bound` and `upper_bound` must be equal to the min and max values |
+| _optional_  | 1      | `lower_bound`             | Field type or `geo_lower` | all primitives except `vector`, or `variant`  | Lower bound stored as the field's type, or `geo_lower` for geo types |
+| _optional_  | 2      | `upper_bound`             | Field type or `geo_upper` | all primitives except `vector`, or `variant`  | Upper bound stored as the field's type, or `geo_upper` for geo types |
+| _optional_  | 3      | `tight_bounds`            | `boolean`                 | all primitives except for `geometry`, `geography`, and `vector` | When true, `lower_bound` and `upper_bound` must be equal to the min and max values |
 | _optional_  | 4      | `value_count`             | `long`                    | all                                           | Number of values in the column (including null and NaN values) |
 | _optional_  | 5      | `null_value_count`        | `long`                    | optional fields                               | Number of null values in the column |
 | _optional_  | 6      | `nan_value_count`         | `long`                    | `float`, `double`                             | Number of NaN values in the column |
@@ -1513,15 +1527,19 @@ Maps with non-string keys must use an array representation with the `map` logica
 |**`variant`**|`record` with `metadata` and `value` fields. `metadata` and `value` must not be assigned field IDs and the fields are accessed through names. |Shredding is not supported in Avro.|
 |**`geometry`**|`bytes`|WKB format, see [Appendix G](#appendix-g-geospatial-notes)|
 |**`geography`**|`bytes`|WKB format, see [Appendix G](#appendix-g-geospatial-notes)|
+|**`vector(T, D)`**|`{ "type": "array",`<br />&nbsp;&nbsp;`"items": <Avro type for T>,`<br />&nbsp;&nbsp;`"logicalType": "vector",`<br />&nbsp;&nbsp;`"size": D }`|Must contain exactly `D` required finite elements of type `T`. Must not assign `element-id`. [3]|
 
 Notes:
 
 1. Avro type annotation `adjust-to-utc` is an Iceberg convention; default value is `false` if not present.
 2. Avro logical type `timestamp-nanos` is an Iceberg convention; the Avro specification does not define this type.
+3. Avro logical type `vector` is an Iceberg convention; the Avro specification does not define this type.
 
 **Field IDs**
 
 Iceberg struct, list, and map types identify nested types by ID. When writing data to Avro files, these IDs must be stored in the Avro schema to support ID-based column pruning.
+
+`vector` is a primitive type and must not assign `element-id`.
 
 IDs are stored as JSON integers in the following locations:
 
@@ -1568,6 +1586,7 @@ Lists must use the [3-level representation](https://github.com/apache/parquet-fo
 | **`variant`**      | `group` with `metadata` and `value` fields. `metadata` and `value` must not be assigned field IDs and the fields are accessed through names. | `VARIANT`                                   | See Parquet docs for [Variant encoding](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md) and [Variant shredding encoding](https://github.com/apache/parquet-format/blob/master/VariantShredding.md). |
 | **`geometry`**     | `binary`                                                                                                                                     | `GEOMETRY`                                  | WKB format, see [Appendix G](#appendix-g-geospatial-notes).                             |
 | **`geography`**    | `binary`                                                                                                                                     | `GEOGRAPHY`                                 | WKB format, see [Appendix G](#appendix-g-geospatial-notes).                             |
+| **`vector(T, D)`** | `3-level list` of `T`                                                                                                                        | `VECTOR(D)`                                 | Must contain exactly `D` required finite elements. Nested list representation fields must not be assigned field IDs. Writers must also set `ConvertedType.LIST`. See Parquet [VECTOR](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md#vectors). |
 
 When reading an `unknown` column, any corresponding column must be ignored and replaced with `null` values.
 
@@ -1600,6 +1619,7 @@ When reading an `unknown` column, any corresponding column must be ignored and r
 | **`variant`**      | `struct` with `metadata` and `value` fields. `metadata` and `value` must not be assigned field IDs. |  `iceberg.struct-type`=`VARIANT`   | Shredding is not supported in ORC.                                                 |
 | **`geometry`**     | `binary`            | `iceberg.binary-type`=`GEOMETRY`                     | WKB format, see [Appendix G](#appendix-g-geospatial-notes).                                                      |
 | **`geography`**    | `binary`            | `iceberg.binary-type`=`GEOGRAPHY`                     | WKB format, see [Appendix G](#appendix-g-geospatial-notes).                                                      |
+| **`vector(T, D)`** | `array`             | `iceberg.array-type`=`VECTOR` & `iceberg.length`=`D` | Must contain exactly `D` required finite elements of type `T`.                                                 |
 
 Notes:
 
@@ -1647,6 +1667,8 @@ The types below are not currently valid for bucketing, and so are not hashed. Ho
 | **`double`**       | `hashLong(doubleToLongBits(v))`        [5]| `1.0D` ￫ `-142385009`, `0.0D` ￫ `1669671676`, `-0.0D` ￫ `1669671676` |
 
 A 32-bit hash is not defined for `variant` because there are multiple representations for equivalent values.
+
+A 32-bit hash is not defined for `vector`.
 
 Notes:
 
@@ -1696,6 +1718,7 @@ Types are serialized according to this table:
 | **`variant`**| `JSON string: "variant"`|`"variant"`|
 | **`geometry(C)`** |`JSON string: "geometry(<C>)"`|`"geometry(srid:4326)"`|
 | **`geography(C, A)`** |`JSON string: "geography(<C>, <A>)"`|`"geography(srid:4326, spherical)"`|
+| **`vector(T, D)`** |`JSON string: "vector(<T>, <D>)"`|`"vector(float, 768)"`|
 
 The schema JSON type strings in this table are the canonical serialized forms. Readers should accept optional whitespace around parameters and separators in parameterized type strings.
 
@@ -1855,6 +1878,7 @@ This serialization scheme is for storing single values as individual binary valu
 | **`variant`**                | Not supported                                                                                                |
 | **`geometry`**               | WKB format, see [Appendix G](#appendix-g-geospatial-notes)                                                   |
 | **`geography`**              | WKB format, see [Appendix G](#appendix-g-geospatial-notes)                                                   |
+| **`vector(T, D)`**           | Not supported                                                                                                |
 
 ### Bound serialization
 
@@ -1893,12 +1917,15 @@ The binary single-value serialization can be used to store the lower and upper b
 | **`map`**          | **`JSON object of key and value arrays`** | `{ "keys": ["a", "b"], "values": [1, 2] }` | Stores arrays of keys and values; individual keys and values are serialized using this JSON single-value format |
 | **`geometry`**     | **`JSON string`**                         | `POINT (30 10)`                            | Stored using WKT representation, see [Appendix G](#appendix-g-geospatial-notes) |
 | **`geography`**    | **`JSON string`**                         | `POINT (30 10)`                            | Stored using WKT representation, see [Appendix G](#appendix-g-geospatial-notes) |
+| **`vector(T, D)`** | **`JSON array of values`**                | `[0.1, 0.2]`                               | Stores a JSON array of `D` element values serialized using this JSON single-value format |
 
 ## Appendix E: Format version changes
 
 ### Version 4
 
 Relative path support is added in v4.
+
+Type `vector` is added in v4.
 
 Reading v3 or prior metadata for v4:
 

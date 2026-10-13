@@ -166,6 +166,7 @@ Primitive types are compared using signed comparison, except for the following t
 * `uuid` uses unsigned byte-wise comparison of the UUID bytes
 * `decimal` uses signed comparison independent of scale; this is equivalent to comparison of unscaled values because type alignment produces values with the same scale
 * `float` and `double` use IEEE 754 order for all non-NaN values; see below for NaN comparison rules
+* `vector` uses element-wise equality; ordering comparisons (`<`, `<=`, `>`, `>=`) are not defined
 
 For floating point values, comparison with NaN behaves similarly to comparison of values with null. NaN should be specifically handled using `IS NaN` and `IS NOT NaN` tests. However, when value expressions produce a NaN value, the following rules must be applied:
 
@@ -210,7 +211,7 @@ All partition transforms produce `null` for a `null` input value.
 
 | Function name     | Description                                                  | Source types                                                         | Result type |
 |-------------------|--------------------------------------------------------------|----------------------------------------------------------------------|-------------|
-| `identity(value)` | Source value, unmodified                                     | Any primitive except for `geometry` and `geography` | Source type |
+| `identity(value)` | Source value, unmodified                                     | Any primitive except for `geometry`, `geography`, and `vector` | Source type |
 | `year(value)`     | Extract a date or timestamp year, as years from 1970         | `date`, `timestamp`, `timestamptz`, `timestamp_ns`, `timestamptz_ns` | `int`       |
 | `month(value)`    | Extract a date or timestamp month, as months from 1970-01-01 | `date`, `timestamp`, `timestamptz`, `timestamp_ns`, `timestamptz_ns` | `int`       |
 | `day(value)`      | Extract a date or timestamp day, as days from 1970-01-01     | `date`, `timestamp`, `timestamptz`, `timestamp_ns`, `timestamptz_ns` | `date`      |
@@ -222,7 +223,7 @@ Note that `year`, `month`, and `hour` transforms produce ordinal values and not 
 
 | Parameterized function name | Description                                                           | Source types                                                                                 | Result type |
 |-----------------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------------|-------------|
-| `bucket(N, value)`          | Hash of value, mod `N` (see [table spec details][bucket-ref])         | Any primitive except for `geometry`, `geography`, `boolean`, `float`, or `double` | `int`       |
+| `bucket(N, value)`          | Hash of value, mod `N` (see [table spec details][bucket-ref])         | Any primitive except for `geometry`, `geography`, `vector`, `boolean`, `float`, or `double` | `int`       |
 | `truncate(W, value)`        | Value truncated to width `W` (see [table spec details][truncate-ref]) | `int`, `long`, `decimal`, `string`, `binary`                                                 | Source type |
 
 [bucket-ref]: spec/#bucket-transform-details
