@@ -98,6 +98,24 @@ public abstract class FixupTypes extends TypeUtil.CustomOrderSchemaVisitor<Type>
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Supplier<Type> elementTypeFuture) {
+    Preconditions.checkArgument(sourceType.isVectorType(), "Not a vector: %s", sourceType);
+
+    Types.VectorType sourceVector = sourceType.asVectorType();
+    this.sourceType = sourceVector.elementField().type();
+    try {
+      Type elementType = elementTypeFuture.get();
+      if (vector.elementField().type() == elementType) {
+        return vector;
+      }
+
+      return Types.VectorType.of(vector.elementId(), elementType, vector.dimension());
+    } finally {
+      this.sourceType = sourceVector;
+    }
+  }
+
+  @Override
   public Type list(Types.ListType list, Supplier<Type> elementTypeFuture) {
     Preconditions.checkArgument(sourceType.isListType(), "Not a list: %s", sourceType);
 

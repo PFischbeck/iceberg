@@ -46,6 +46,7 @@ public interface Type extends Serializable {
     DECIMAL(BigDecimal.class),
     GEOMETRY(ByteBuffer.class),
     GEOGRAPHY(ByteBuffer.class),
+    VECTOR(List.class),
     STRUCT(StructLike.class),
     LIST(List.class),
     MAP(Map.class),
@@ -107,6 +108,14 @@ public interface Type extends Serializable {
 
   default boolean isVariantType() {
     return false;
+  }
+
+  default boolean isVectorType() {
+    return false;
+  }
+
+  default Types.VectorType asVectorType() {
+    throw new IllegalArgumentException("Not a vector type: " + this);
   }
 
   default NestedType asNestedType() {

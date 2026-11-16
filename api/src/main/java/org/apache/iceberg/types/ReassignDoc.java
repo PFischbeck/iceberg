@@ -77,6 +77,16 @@ class ReassignDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Supplier<Type> elementTypeFuture) {
+    Type elementType = elementTypeFuture.get();
+    if (vector.elementField().type() == elementType) {
+      return vector;
+    }
+
+    return Types.VectorType.of(vector.elementId(), elementType, vector.dimension());
+  }
+
+  @Override
   public Type map(Types.MapType map, Supplier<Type> keyTypeFuture, Supplier<Type> valueTypeFuture) {
     int keyId = map.keyId();
     int valueId = map.valueId();

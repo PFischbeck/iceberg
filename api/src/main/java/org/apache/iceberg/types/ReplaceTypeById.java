@@ -79,6 +79,11 @@ class ReplaceTypeById extends TypeUtil.SchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Type elementResult) {
+    return vector;
+  }
+
+  @Override
   public Type map(Types.MapType map, Type keyResult, Type valueResult) {
     Type keyReplacement = replacementsById.getOrDefault(map.keyId(), keyResult);
     Type valueReplacement = replacementsById.getOrDefault(map.valueId(), valueResult);

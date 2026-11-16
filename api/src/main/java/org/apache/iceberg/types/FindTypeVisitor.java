@@ -64,6 +64,15 @@ class FindTypeVisitor extends TypeUtil.SchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Type elementResult) {
+    if (predicate.test(vector)) {
+      return vector;
+    }
+
+    return elementResult;
+  }
+
+  @Override
   public Type map(Types.MapType map, Type keyResult, Type valueResult) {
     if (predicate.test(map)) {
       return map;

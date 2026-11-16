@@ -238,6 +238,12 @@ public class Accessors {
     }
 
     @Override
+    public Map<Integer, Accessor<StructLike>> vector(
+        Types.VectorType vector, Map<Integer, Accessor<StructLike>> elementResult) {
+      return null;
+    }
+
+    @Override
     public Map<Integer, Accessor<StructLike>> field(
         Types.NestedField field, Map<Integer, Accessor<StructLike>> fieldResult) {
       return fieldResult;

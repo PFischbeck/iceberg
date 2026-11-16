@@ -298,6 +298,11 @@ public class MappingUtil {
     }
 
     @Override
+    public MappedFields vector(Types.VectorType vector, MappedFields elementResult) {
+      return null;
+    }
+
+    @Override
     public MappedFields map(Types.MapType map, MappedFields keyResult, MappedFields valueResult) {
       return MappedFields.of(
           MappedField.of(map.keyId(), "key", keyResult),

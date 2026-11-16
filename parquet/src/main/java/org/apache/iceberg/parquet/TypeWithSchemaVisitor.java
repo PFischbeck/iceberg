@@ -58,6 +58,9 @@ public class TypeWithSchemaVisitor<T> {
       GroupType group = type.asGroupType();
       LogicalTypeAnnotation annotation = group.getLogicalTypeAnnotation();
       if (annotation instanceof ListLogicalTypeAnnotation) {
+        if (iType != null && iType.isVectorType()) {
+          return visitVector(iType.asVectorType(), group, visitor);
+        }
         return visitList(iType, group, visitor);
       } else if (annotation instanceof MapLogicalTypeAnnotation) {
         return visitMap(iType, group, visitor);
@@ -69,6 +72,18 @@ public class TypeWithSchemaVisitor<T> {
 
       Types.StructType struct = iType != null ? iType.asStructType() : null;
       return visitor.struct(struct, group, visitFields(struct, group, visitor));
+    }
+  }
+
+  private static <T> T visitVector(
+      Types.VectorType vector, GroupType group, TypeWithSchemaVisitor<T> visitor) {
+    Type listElement = ParquetSchemaUtil.determineListElementType(group);
+    visitor.fieldNames.push(group.getFieldName(0));
+    try {
+      T elementResult = visitField(vector.elementField(), listElement, visitor);
+      return visitor.vector(vector, group, elementResult);
+    } finally {
+      visitor.fieldNames.pop();
     }
   }
 
@@ -232,6 +247,10 @@ public class TypeWithSchemaVisitor<T> {
 
   public T list(Types.ListType iList, GroupType array, T element) {
     return null;
+  }
+
+  public T vector(Types.VectorType iVector, GroupType array, T element) {
+    throw new UnsupportedOperationException("Not implemented for vector");
   }
 
   public T map(Types.MapType iMap, GroupType map, T key, T value) {

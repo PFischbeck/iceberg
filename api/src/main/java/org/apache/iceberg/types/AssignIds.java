@@ -78,6 +78,11 @@ class AssignIds extends TypeUtil.CustomOrderSchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Supplier<Type> future) {
+    return Types.VectorType.of(idFor(vector.elementId()), future.get(), vector.dimension());
+  }
+
+  @Override
   public Type map(Types.MapType map, Supplier<Type> keyFuture, Supplier<Type> valueFuture) {
     int newKeyId = idFor(map.keyId());
     int newValueId = idFor(map.valueId());

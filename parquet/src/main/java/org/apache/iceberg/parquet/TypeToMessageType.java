@@ -45,6 +45,7 @@ import org.apache.iceberg.types.Types.NestedField;
 import org.apache.iceberg.types.Types.StructType;
 import org.apache.iceberg.types.Types.TimestampNanoType;
 import org.apache.iceberg.types.Types.TimestampType;
+import org.apache.iceberg.types.Types.VectorType;
 import org.apache.iceberg.variants.Variant;
 import org.apache.parquet.column.schema.EdgeInterpolationAlgorithm;
 import org.apache.parquet.schema.GroupType;
@@ -134,9 +135,19 @@ public class TypeToMessageType {
         return map(nested.asMapType(), repetition, id, name);
       } else if (nested.isListType()) {
         return list(nested.asListType(), repetition, id, name);
+      } else if (nested.isVectorType()) {
+        return vector(nested.asVectorType(), repetition, id, name);
       }
       throw new UnsupportedOperationException("Can't convert unknown type: " + nested);
     }
+  }
+
+  public GroupType vector(VectorType vector, Type.Repetition repetition, int id, String name) {
+    return list(
+        ListType.ofRequired(vector.elementId(), vector.elementField().type()),
+        repetition,
+        id,
+        name);
   }
 
   public GroupType list(ListType list, Type.Repetition repetition, int id, String name) {

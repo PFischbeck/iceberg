@@ -27,12 +27,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.types.EdgeAlgorithm;
 import org.apache.iceberg.types.Type;
+import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -50,7 +52,8 @@ public class TestSchema {
           Types.GeometryType.crs84(),
           Types.GeometryType.of("srid:3857"),
           Types.GeographyType.crs84(),
-          Types.GeographyType.of("srid:4269", EdgeAlgorithm.KARNEY));
+          Types.GeographyType.of("srid:4269", EdgeAlgorithm.KARNEY),
+          Types.VectorType.of(10, Types.VectorType.ElementType.FLOAT, 768));
 
   private static final Schema INITIAL_DEFAULT_SCHEMA =
       new Schema(
@@ -72,20 +75,27 @@ public class TestSchema {
               .build());
 
   private Schema generateTypeSchema(Type type) {
-    return new Schema(
-        Types.NestedField.required(1, "id", Types.LongType.get()),
-        Types.NestedField.optional(2, "top", type),
-        Types.NestedField.optional(3, "arr", Types.ListType.ofRequired(4, type)),
-        Types.NestedField.required(
-            5,
-            "struct",
-            Types.StructType.of(
-                Types.NestedField.optional(6, "inner_op", type),
-                Types.NestedField.required(7, "inner_req", type),
-                Types.NestedField.optional(
-                    8,
-                    "struct_arr",
-                    Types.StructType.of(Types.NestedField.optional(9, "deep", type))))));
+    Types.StructType struct =
+        Types.StructType.of(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "top", type),
+            Types.NestedField.optional(3, "arr", Types.ListType.ofRequired(4, type)),
+            Types.NestedField.required(
+                5,
+                "struct",
+                Types.StructType.of(
+                    Types.NestedField.optional(6, "inner_op", type),
+                    Types.NestedField.required(7, "inner_req", type),
+                    Types.NestedField.optional(
+                        8,
+                        "struct_arr",
+                        Types.StructType.of(Types.NestedField.optional(9, "deep", type))))));
+    if (type.isVectorType()) {
+      AtomicInteger nextId = new AtomicInteger(0);
+      struct = TypeUtil.assignFreshIds(struct, nextId::incrementAndGet).asStructType();
+    }
+
+    return new Schema(struct.fields());
   }
 
   private static Stream<Arguments> unsupportedTypes() {
