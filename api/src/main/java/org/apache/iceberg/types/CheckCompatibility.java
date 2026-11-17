@@ -201,6 +201,27 @@ public class CheckCompatibility extends TypeUtil.CustomOrderSchemaVisitor<List<S
   }
 
   @Override
+  public List<String> vector(Types.VectorType readVector, Supplier<List<String>> elementErrors) {
+    if (!currentType.isVectorType()) {
+      return ImmutableList.of(String.format(": %s cannot be read as a vector", currentType));
+    }
+
+    Types.VectorType vector = currentType.asVectorType();
+    if (readVector.dimension() != vector.dimension()
+        || readVector.elementType() != vector.elementType()) {
+      return ImmutableList.of(
+          String.format(": %s cannot be read as a %s", currentType, readVector));
+    }
+
+    this.currentType = vector.elementField().type();
+    try {
+      return ImmutableList.copyOf(elementErrors.get());
+    } finally {
+      this.currentType = vector;
+    }
+  }
+
+  @Override
   public List<String> list(Types.ListType readList, Supplier<List<String>> elementErrors) {
     if (!currentType.isListType()) {
       return ImmutableList.of(String.format(": %s cannot be read as a list", currentType));

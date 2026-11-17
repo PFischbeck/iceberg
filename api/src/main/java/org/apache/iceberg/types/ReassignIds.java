@@ -132,6 +132,21 @@ class ReassignIds extends TypeUtil.CustomOrderSchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(Types.VectorType vector, Supplier<Type> elementTypeFuture) {
+    Preconditions.checkArgument(sourceType.isVectorType(), "Not a vector: %s", sourceType);
+
+    Types.VectorType sourceVector = sourceType.asVectorType();
+    int sourceElementId = sourceVector.elementId();
+
+    this.sourceType = sourceVector.elementField().type();
+    try {
+      return Types.VectorType.of(sourceElementId, elementTypeFuture.get(), vector.dimension());
+    } finally {
+      this.sourceType = sourceVector;
+    }
+  }
+
+  @Override
   public Type map(Types.MapType map, Supplier<Type> keyTypeFuture, Supplier<Type> valueTypeFuture) {
     Preconditions.checkArgument(sourceType.isMapType(), "Not a map: %s", sourceType);
 

@@ -50,7 +50,7 @@ public class TypeUtil {
    *
    * <p>Unlike {@link TypeUtil#select(Schema, Set)}, project will pick out only the fields
    * enumerated. Structs that are explicitly projected are empty unless sub-fields are explicitly
-   * projected. Maps and lists cannot be explicitly selected in fieldIds.
+   * projected. Maps and lists cannot be explicitly selected in fieldIds. Vectors are kept in full.
    *
    * @param schema to project fields from
    * @param fieldIds list of explicit fields to extract
@@ -627,6 +627,9 @@ public class TypeUtil {
       case LIST:
         Types.ListType list = (Types.ListType) type;
         return HEADER_SIZE + 5 * estimateSize(list.elementType());
+      case VECTOR:
+        Types.VectorType vector = type.asVectorType();
+        return HEADER_SIZE + vector.dimension() * estimateSize(vector.elementField().type());
       case MAP:
         Types.MapType map = (Types.MapType) type;
         int entrySize = HEADER_SIZE + estimateSize(map.keyType()) + estimateSize(map.valueType());
@@ -705,6 +708,14 @@ public class TypeUtil {
       afterField(elementField);
     }
 
+    public void beforeVectorElement(Types.NestedField elementField) {
+      beforeField(elementField);
+    }
+
+    public void afterVectorElement(Types.NestedField elementField) {
+      afterField(elementField);
+    }
+
     public void beforeMapKey(Types.NestedField keyField) {
       beforeField(keyField);
     }
@@ -734,6 +745,10 @@ public class TypeUtil {
     }
 
     public T list(Types.ListType list, T elementResult) {
+      return null;
+    }
+
+    public T vector(Types.VectorType vector, T elementResult) {
       return null;
     }
 
@@ -793,6 +808,19 @@ public class TypeUtil {
 
         return visitor.list(list, elementResult);
 
+      case VECTOR:
+        Types.VectorType vector = type.asVectorType();
+        T vectorElementResult;
+        Types.NestedField vectorElement = vector.elementField();
+        visitor.beforeVectorElement(vectorElement);
+        try {
+          vectorElementResult = visit(vectorElement.type(), visitor);
+        } finally {
+          visitor.afterVectorElement(vectorElement);
+        }
+
+        return visitor.vector(vector, vectorElementResult);
+
       case MAP:
         Types.MapType map = type.asNestedType().asMapType();
         T keyResult;
@@ -838,6 +866,10 @@ public class TypeUtil {
     }
 
     public T list(Types.ListType list, Supplier<T> elementResult) {
+      return null;
+    }
+
+    public T vector(Types.VectorType vector, Supplier<T> elementResult) {
       return null;
     }
 
@@ -917,6 +949,10 @@ public class TypeUtil {
       case LIST:
         Types.ListType list = type.asNestedType().asListType();
         return visitor.list(list, new VisitFuture<>(list.elementType(), visitor));
+
+      case VECTOR:
+        Types.VectorType vector = type.asVectorType();
+        return visitor.vector(vector, new VisitFuture<>(vector.elementField().type(), visitor));
 
       case MAP:
         Types.MapType map = type.asNestedType().asMapType();

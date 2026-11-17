@@ -1162,6 +1162,88 @@ public class TestTypeUtil {
   }
 
   @Test
+  public void replaceFieldTypesIgnoresVectorElementId() {
+    Types.VectorType vector = Types.VectorType.of(2, Types.VectorType.ElementType.INT, 4);
+    Schema schema = new Schema(required(1, "emb", vector));
+
+    Schema result = TypeUtil.replaceFieldTypes(schema, ImmutableMap.of(2, Types.LongType.get()));
+
+    assertThat(result.findField(1).type()).isEqualTo(vector);
+  }
+
+  @Test
+  public void replaceFieldTypesReplacesVectorColumn() {
+    Schema schema =
+        new Schema(required(1, "emb", Types.VectorType.of(2, Types.VectorType.ElementType.INT, 4)));
+
+    Schema result = TypeUtil.replaceFieldTypes(schema, ImmutableMap.of(1, Types.LongType.get()));
+
+    assertThat(result.findField(1).type()).isEqualTo(Types.LongType.get());
+  }
+
+  @Test
+  public void projectedIdsIncludeVectorFieldNotElement() {
+    Schema schema =
+        new Schema(
+            required(1, "id", Types.LongType.get()),
+            optional(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.INT, 4)));
+
+    assertThat(TypeUtil.getProjectedIds(schema)).containsExactlyInAnyOrder(1, 2);
+  }
+
+  @Test
+  public void schemaVisitorDefaultAcceptsVector() {
+    Schema schema =
+        new Schema(required(1, "emb", Types.VectorType.of(2, Types.VectorType.ElementType.INT, 4)));
+
+    assertThat(TypeUtil.visit(schema, new TypeUtil.SchemaVisitor<Void>() {})).isNull();
+  }
+
+  @Test
+  public void projectVectorByFieldId() {
+    Schema schema =
+        new Schema(
+            required(1, "id", Types.LongType.get()),
+            optional(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.INT, 4)));
+
+    Schema projected = TypeUtil.project(schema, Sets.newHashSet(2));
+    assertThat(projected.asStruct())
+        .isEqualTo(
+            new Schema(
+                    optional(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.INT, 4)))
+                .asStruct());
+
+    Schema byElement = TypeUtil.project(schema, Sets.newHashSet(3));
+    assertThat(byElement.asStruct()).isEqualTo(projected.asStruct());
+  }
+
+  @Test
+  public void projectNestedVectorByFieldId() {
+    Schema schema =
+        new Schema(
+            optional(
+                1,
+                "s",
+                Types.StructType.of(
+                    optional(
+                        2, "v", Types.VectorType.of(3, Types.VectorType.ElementType.FLOAT, 8)))));
+
+    Schema projected = TypeUtil.project(schema, Sets.newHashSet(2));
+    assertThat(projected.asStruct())
+        .isEqualTo(
+            new Schema(
+                    optional(
+                        1,
+                        "s",
+                        Types.StructType.of(
+                            optional(
+                                2,
+                                "v",
+                                Types.VectorType.of(3, Types.VectorType.ElementType.FLOAT, 8)))))
+                .asStruct());
+  }
+
+  @Test
   public void testReplaceFieldTypesNoMatchReturnsSameSchema() {
     Schema schema = new Schema(required(1, "id", IntegerType.get()));
     Schema result = TypeUtil.replaceFieldTypes(schema, ImmutableMap.of(99, Types.LongType.get()));

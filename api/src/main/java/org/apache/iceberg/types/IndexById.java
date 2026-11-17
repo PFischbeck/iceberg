@@ -55,6 +55,13 @@ class IndexById extends TypeUtil.SchemaVisitor<Map<Integer, Types.NestedField>> 
   }
 
   @Override
+  public Map<Integer, Types.NestedField> vector(
+      Types.VectorType vector, Map<Integer, Types.NestedField> elementResult) {
+    index.put(vector.elementId(), vector.elementField());
+    return null;
+  }
+
+  @Override
   public Map<Integer, Types.NestedField> map(
       Types.MapType map,
       Map<Integer, Types.NestedField> keyResult,

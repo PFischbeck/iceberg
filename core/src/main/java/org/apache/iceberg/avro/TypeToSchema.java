@@ -146,6 +146,19 @@ abstract class TypeToSchema extends TypeUtil.SchemaVisitor<Schema> {
   }
 
   @Override
+  public Schema vector(Types.VectorType vector, Schema elementSchema) {
+    Schema vectorSchema = lookupSchema(vector);
+    if (vectorSchema != null) {
+      return vectorSchema;
+    }
+
+    vectorSchema = Schema.createArray(elementSchema);
+    vectorSchema.addProp(AvroSchemaUtil.ELEMENT_ID_PROP, vector.elementId());
+    cacheSchema(vector, vectorSchema);
+    return vectorSchema;
+  }
+
+  @Override
   public Schema list(Types.ListType list, Schema elementSchema) {
     Schema listSchema = lookupSchema(list);
     if (listSchema != null) {

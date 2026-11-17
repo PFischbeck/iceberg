@@ -687,6 +687,16 @@ class SchemaUpdate implements UpdateSchema {
     }
 
     @Override
+    public Type vector(Types.VectorType vector, Type elementResult) {
+      int elementId = vector.elementId();
+      if (deletes.contains(elementId) || updates.containsKey(elementId)) {
+        throw new IllegalArgumentException("Cannot update vector element: " + vector);
+      }
+
+      return vector;
+    }
+
+    @Override
     public Type list(Types.ListType list, Type elementResult) {
       // use field to apply updates
       Types.NestedField elementField = list.fields().get(0);

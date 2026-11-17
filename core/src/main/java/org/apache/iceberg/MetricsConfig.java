@@ -160,7 +160,7 @@ public final class MetricsConfig implements Serializable {
           }
 
           private boolean metricsEligible(Type type) {
-            return type.isPrimitiveType() || type.isVariantType();
+            return type.isPrimitiveType() || type.isVariantType() || type.isVectorType();
           }
 
           @Override
@@ -210,6 +210,12 @@ public final class MetricsConfig implements Serializable {
             }
 
             elementResult.get();
+            return null;
+          }
+
+          @Override
+          public Set<Integer> vector(
+              Types.VectorType vector, Supplier<Set<Integer>> elementResult) {
             return null;
           }
 

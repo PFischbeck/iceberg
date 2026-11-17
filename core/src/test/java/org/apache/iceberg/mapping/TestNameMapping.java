@@ -291,6 +291,20 @@ public class TestNameMapping {
   }
 
   @Test
+  public void mappingVectorHasNoNestedElement() {
+    Schema schema =
+        new Schema(
+            required(1, "id", Types.LongType.get()),
+            required(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.FLOAT, 8)));
+
+    MappedFields expected = MappedFields.of(MappedField.of(1, "id"), MappedField.of(2, "emb"));
+
+    NameMapping mapping = MappingUtil.create(schema);
+    assertThat(mapping.asMappedFields()).isEqualTo(expected);
+    assertThat(mapping.find("emb", "element")).isNull();
+  }
+
+  @Test
   public void testMappingVariantType() {
     Schema schema =
         new Schema(

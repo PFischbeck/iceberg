@@ -69,6 +69,12 @@ public class IndexParents extends TypeUtil.SchemaVisitor<Map<Integer, Integer>> 
   }
 
   @Override
+  public Map<Integer, Integer> vector(Types.VectorType vector, Map<Integer, Integer> element) {
+    idToParent.put(vector.elementId(), idStack.peek());
+    return idToParent;
+  }
+
+  @Override
   public Map<Integer, Integer> map(
       Types.MapType map, Map<Integer, Integer> key, Map<Integer, Integer> value) {
     idToParent.put(map.keyId(), idStack.peek());

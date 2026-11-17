@@ -182,6 +182,11 @@ public class IndexByName extends TypeUtil.SchemaVisitor<Map<String, Integer>> {
   }
 
   @Override
+  public Map<String, Integer> vector(Types.VectorType vector, Map<String, Integer> elementResult) {
+    return nameToId;
+  }
+
+  @Override
   public Map<String, Integer> map(
       Types.MapType map, Map<String, Integer> keyResult, Map<String, Integer> valueResult) {
     addField("key", map.keyId());

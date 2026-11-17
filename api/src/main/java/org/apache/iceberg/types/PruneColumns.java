@@ -95,6 +95,8 @@ class PruneColumns extends TypeUtil.SchemaVisitor<Type> {
         return field.type();
       } else if (field.type().isStructType()) {
         return projectSelectedStruct(fieldResult);
+      } else if (field.type().isVectorType()) {
+        return field.type();
       } else {
         Preconditions.checkArgument(
             !field.type().isNestedType(),
@@ -109,6 +111,15 @@ class PruneColumns extends TypeUtil.SchemaVisitor<Type> {
       // This field wasn't selected but a subfield was so include that
       return fieldResult;
     }
+    return null;
+  }
+
+  @Override
+  public Type vector(Types.VectorType vector, Type elementResult) {
+    if (selected.contains(vector.elementId())) {
+      return vector;
+    }
+
     return null;
   }
 

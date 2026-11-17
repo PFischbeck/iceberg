@@ -43,6 +43,7 @@ public class SchemaParser {
   private static final String TYPE = "type";
   private static final String STRUCT = "struct";
   private static final String LIST = "list";
+  private static final String VECTOR = "vector";
   private static final String MAP = "map";
   private static final String FIELDS = "fields";
   private static final String ELEMENT = "element";
@@ -59,6 +60,7 @@ public class SchemaParser {
   private static final String REQUIRED = "required";
   private static final String ELEMENT_REQUIRED = "element-required";
   private static final String VALUE_REQUIRED = "value-required";
+  private static final String DIMENSION = "dimension";
 
   private static void toJson(Types.StructType struct, JsonGenerator generator) throws IOException {
     toJson(struct, null, null, generator);
@@ -110,6 +112,18 @@ public class SchemaParser {
     generator.writeEndObject();
   }
 
+  static void toJson(Types.VectorType vector, JsonGenerator generator) throws IOException {
+    generator.writeStartObject();
+
+    generator.writeStringField(TYPE, VECTOR);
+    generator.writeNumberField(ELEMENT_ID, vector.elementId());
+    generator.writeFieldName(ELEMENT);
+    toJson(vector.elementField().type(), generator);
+    generator.writeNumberField(DIMENSION, vector.dimension());
+
+    generator.writeEndObject();
+  }
+
   static void toJson(Types.ListType list, JsonGenerator generator) throws IOException {
     generator.writeStartObject();
 
@@ -152,6 +166,9 @@ public class SchemaParser {
         case LIST:
           toJson(nested.asListType(), generator);
           break;
+        case VECTOR:
+          toJson(nested.asVectorType(), generator);
+          break;
         case MAP:
           toJson(nested.asMapType(), generator);
           break;
@@ -186,6 +203,8 @@ public class SchemaParser {
           return structFromJson(json);
         } else if (LIST.equals(type)) {
           return listFromJson(json);
+        } else if (VECTOR.equals(type)) {
+          return vectorFromJson(json);
         } else if (MAP.equals(type)) {
           return mapFromJson(json);
         }
@@ -250,6 +269,13 @@ public class SchemaParser {
     }
 
     return Types.StructType.of(fields);
+  }
+
+  private static Types.VectorType vectorFromJson(JsonNode json) {
+    int elementId = JsonUtil.getInt(ELEMENT_ID, json);
+    Type elementType = typeFromJson(JsonUtil.get(ELEMENT, json));
+    int dimension = JsonUtil.getInt(DIMENSION, json);
+    return Types.VectorType.of(elementId, elementType, dimension);
   }
 
   private static Types.ListType listFromJson(JsonNode json) {

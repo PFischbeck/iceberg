@@ -198,6 +198,11 @@ class StatsUtil {
     return statId >= baseId && statId < (baseId + NUM_RESERVED_FIELD_STATS_IDS);
   }
 
+  /** Lower and upper bounds are excluded for vector type. */
+  private static boolean hasBounds(Type type) {
+    return type.typeId() != Type.TypeID.VECTOR;
+  }
+
   private static boolean tracksTightBounds(Type type) {
     return !type.isVariantType() && !isGeoType(type);
   }
@@ -261,13 +266,16 @@ class StatsUtil {
 
   @VisibleForTesting
   static Types.StructType fieldStatsStruct(Type type, int baseId, MetricsModes.MetricsMode mode) {
-    if (null == mode || mode == MetricsModes.None.get() || type.isNestedType() || baseId < 0) {
+    if (null == mode
+        || mode == MetricsModes.None.get()
+        || (type.isNestedType() && !type.isVectorType())
+        || baseId < 0) {
       return null;
     }
 
     List<Types.NestedField> fields = Lists.newArrayList();
 
-    if (mode.hasBounds()) {
+    if (mode.hasBounds() && hasBounds(type)) {
       fields.add(lowerBoundField(type, baseId));
       fields.add(upperBoundField(type, baseId));
 
@@ -317,6 +325,11 @@ class StatsUtil {
     while (currentId != null) {
       Type type = schema.findField(currentId).type();
       if (type.isMapType() || type.isListType()) {
+        return false;
+      }
+
+      // vector itself is a single value; its element field is repeated
+      if (type.isVectorType() && currentId != id) {
         return false;
       }
 

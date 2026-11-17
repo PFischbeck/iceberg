@@ -23,6 +23,10 @@ import static org.apache.iceberg.types.Types.NestedField.required;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import org.apache.iceberg.Schema;
+import org.apache.iceberg.exceptions.ValidationException;
+import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.expressions.Literal;
 import org.junit.jupiter.api.Test;
 
 public class TestTypes {
@@ -65,6 +69,9 @@ public class TestTypes {
     assertThatExceptionOfType(IllegalArgumentException.class)
         .isThrownBy(() -> Types.fromTypeName("abcdefghij"))
         .withMessage("Cannot parse type string to primitive: abcdefghij");
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> Types.fromTypeName("vector(int, 768)"))
+        .withMessage("Cannot parse type string to primitive: vector(int, 768)");
   }
 
   @Test
@@ -84,6 +91,10 @@ public class TestTypes {
     assertThat(Types.fromPrimitiveString("Decimal( 2 , 3 )")).isEqualTo(Types.DecimalType.of(2, 3));
 
     assertThat(Types.fromPrimitiveString("Decimal(2,3)")).isEqualTo(Types.DecimalType.of(2, 3));
+
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> Types.fromPrimitiveString("vector(int, 768)"))
+        .withMessage("Cannot parse type string to primitive: vector(int, 768)");
 
     assertThatExceptionOfType(IllegalArgumentException.class)
         .isThrownBy(() -> Types.fromPrimitiveString("variant"))
@@ -213,6 +224,97 @@ public class TestTypes {
     assertThat(Types.GeographyType.of("ogc:crs84"))
         .isEqualTo(Types.GeographyType.crs84())
         .hasSameHashCodeAs(Types.GeographyType.crs84());
+  }
+
+  @Test
+  public void testVectorType() {
+    Types.VectorType vector = Types.VectorType.of(1, Types.VectorType.ElementType.FLOAT, 768);
+
+    assertThat(vector.typeId()).isEqualTo(Type.TypeID.VECTOR);
+    assertThat(vector.isPrimitiveType()).isFalse();
+    assertThat(vector.isNestedType()).isTrue();
+    assertThat(vector.isVectorType()).isTrue();
+    assertThat(vector.elementType()).isEqualTo(Types.VectorType.ElementType.FLOAT);
+    assertThat(vector.elementId()).isEqualTo(1);
+    assertThat(vector.dimension()).isEqualTo(768);
+    assertThat(vector.toString()).isEqualTo("vector(float, 768)");
+  }
+
+  @Test
+  public void testVectorTypeEquality() {
+    assertThat(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8))
+        .isEqualTo(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8))
+        .hasSameHashCodeAs(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8));
+
+    // different element type
+    assertThat(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8))
+        .isNotEqualTo(Types.VectorType.of(1, Types.VectorType.ElementType.LONG, 8));
+
+    // different dimension
+    assertThat(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8))
+        .isNotEqualTo(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 16));
+
+    assertThat(Types.VectorType.of(1, Types.VectorType.ElementType.INT, 8))
+        .isNotEqualTo(Types.VectorType.of(2, Types.VectorType.ElementType.INT, 8));
+  }
+
+  @Test
+  public void testVectorTypeInvalidDimension() {
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> Types.VectorType.of(1, Types.VectorType.ElementType.FLOAT, 0))
+        .withMessage("Vector dimension must be at least 1: 0");
+
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> Types.VectorType.of(1, Types.VectorType.ElementType.FLOAT, -1))
+        .withMessage("Vector dimension must be at least 1: -1");
+  }
+
+  @Test
+  public void testVectorTypeInvalidElementType() {
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> Types.VectorType.of(1, Types.StringType.get(), 8))
+        .withMessage("Invalid vector element type: string");
+  }
+
+  @Test
+  public void vectorElementIsNotAddressableByName() {
+    Schema schema =
+        new Schema(
+            required(1, "id", Types.LongType.get()),
+            optional(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.INT, 4)));
+
+    assertThat(schema.findField("emb")).isNotNull();
+    assertThat(schema.findField("emb.element")).isNull();
+    assertThat(schema.findField(3))
+        .isEqualTo(schema.findField("emb").type().asVectorType().elementField());
+    assertThat(schema.select("emb").findField("emb")).isNotNull();
+    assertThat(schema.select("emb.element").columns()).isEmpty();
+    assertThatExceptionOfType(ValidationException.class)
+        .isThrownBy(() -> Expressions.notNull("emb.element").bind(schema.asStruct(), true))
+        .withMessageContaining("Cannot find field 'emb.element'");
+  }
+
+  @Test
+  public void distinctVectorElementIdsAreRequiredInASchema() {
+    Schema schema =
+        new Schema(
+            required(1, "a", Types.VectorType.of(2, Types.VectorType.ElementType.INT, 4)),
+            required(3, "b", Types.VectorType.of(4, Types.VectorType.ElementType.INT, 4)));
+
+    assertThat(schema.findField("a").type().asVectorType().elementId()).isEqualTo(2);
+    assertThat(schema.findField("b").type().asVectorType().elementId()).isEqualTo(4);
+  }
+
+  @Test
+  public void vectorRejectsNonNullDefault() {
+    Types.VectorType vector = Types.VectorType.of(1, Types.VectorType.ElementType.INT, 3);
+    Literal<?> defaultValue = Literal.of("unused");
+
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(
+            () -> required("emb").withId(1).ofType(vector).withInitialDefault(defaultValue).build())
+        .withMessageStartingWith("Invalid default value for vector(int, 3):")
+        .withMessageContaining("must be null");
   }
 
   @Test

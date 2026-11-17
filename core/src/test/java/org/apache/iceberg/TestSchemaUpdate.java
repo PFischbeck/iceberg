@@ -2590,4 +2590,24 @@ public class TestSchemaUpdate {
 
     assertThat(actual.asStruct()).isEqualTo(expected.asStruct());
   }
+
+  @Test
+  public void updateVectorElementIsRejected() {
+    Schema schema =
+        new Schema(
+            required(1, "id", Types.LongType.get()),
+            optional(2, "emb", Types.VectorType.of(3, Types.VectorType.ElementType.INT, 4)));
+
+    assertThatThrownBy(
+            () ->
+                new SchemaUpdate(schema, 3)
+                    .updateColumn("emb.element", Types.LongType.get())
+                    .apply())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Cannot update missing column: emb.element");
+
+    assertThatThrownBy(() -> new SchemaUpdate(schema, 3).renameColumn("emb.element", "e2").apply())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Cannot rename missing column: emb.element");
+  }
 }
