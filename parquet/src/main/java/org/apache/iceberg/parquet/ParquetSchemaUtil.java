@@ -181,6 +181,11 @@ public class ParquetSchemaUtil {
     public Void variant(Types.VariantType expected, GroupType variantGroup, Void result) {
       return null;
     }
+
+    @Override
+    public Void vector(Types.VectorType expected, GroupType vector) {
+      return null;
+    }
   }
 
   /** Shallowest leaf under path; its definition level shows whether the struct is present. */
@@ -319,6 +324,11 @@ public class ParquetSchemaUtil {
     @Override
     public Boolean variant(GroupType variant) {
       return variant.getId() != null;
+    }
+
+    @Override
+    public Boolean vector(GroupType vector) {
+      return vector.getId() != null;
     }
   }
 

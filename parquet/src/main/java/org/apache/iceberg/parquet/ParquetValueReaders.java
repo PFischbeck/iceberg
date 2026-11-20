@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.common.DynConstructors;
@@ -49,6 +50,7 @@ import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.UUIDUtil;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.page.PageReadStore;
+import org.apache.parquet.io.ParquetDecodingException;
 import org.apache.parquet.io.api.Binary;
 import org.apache.parquet.schema.LogicalTypeAnnotation;
 import org.apache.parquet.schema.LogicalTypeAnnotation.DecimalLogicalTypeAnnotation;
@@ -189,6 +191,28 @@ public class ParquetValueReaders {
     } else {
       return ParquetValueReaders.nulls();
     }
+  }
+
+  /** Returns a reader for the elements of a vector column with the given element type. */
+  public static ParquetValueReader<?> vectorElements(
+      ColumnDescriptor desc, Types.VectorType.ElementType elementType) {
+    return switch (elementType) {
+      case INT8 -> new IntAsByteReader(desc);
+      case INT -> new UnboxedReader<Integer>(desc);
+      case LONG -> new UnboxedReader<Long>(desc);
+      case FLOAT16 -> new Float16Reader(desc);
+      case FLOAT -> new UnboxedReader<Float>(desc);
+      case DOUBLE -> new UnboxedReader<Double>(desc);
+    };
+  }
+
+  /**
+   * Wraps a list reader so that it fails when a value does not have exactly {@code dimension}
+   * elements.
+   */
+  public static <L> ParquetValueReader<L> vectors(
+      int dimension, ToIntFunction<L> size, ParquetValueReader<L> listReader) {
+    return new VectorReader<>(dimension, size, listReader);
   }
 
   public static ParquetValueReader<UUID> uuids(ColumnDescriptor desc) {
@@ -689,6 +713,17 @@ public class ParquetValueReaders {
     }
   }
 
+  private static class Float16Reader extends PrimitiveReader<Float> {
+    private Float16Reader(ColumnDescriptor desc) {
+      super(desc);
+    }
+
+    @Override
+    public Float read(Float ignored) {
+      return ParquetVectors.readFloat16(column.nextBinary());
+    }
+  }
+
   public static class IntAsLongReader extends UnboxedReader<Long> {
     public IntAsLongReader(ColumnDescriptor desc) {
       super(desc);
@@ -1018,6 +1053,46 @@ public class ParquetValueReaders {
     @Override
     protected List<E> buildList(List<E> list) {
       return list;
+    }
+  }
+
+  private static class VectorReader<L> implements ParquetValueReader<L> {
+    private final int dimension;
+    private final ToIntFunction<L> size;
+    private final ParquetValueReader<L> reader;
+
+    private VectorReader(int dimension, ToIntFunction<L> size, ParquetValueReader<L> reader) {
+      this.dimension = dimension;
+      this.size = size;
+      this.reader = reader;
+    }
+
+    @Override
+    public L read(L reuse) {
+      L vector = reader.read(reuse);
+      int numElements = size.applyAsInt(vector);
+      if (numElements != dimension) {
+        throw new ParquetDecodingException(
+            String.format(
+                "Invalid vector: expected %s elements but read %s", dimension, numElements));
+      }
+
+      return vector;
+    }
+
+    @Override
+    public TripleIterator<?> column() {
+      return reader.column();
+    }
+
+    @Override
+    public List<TripleIterator<?>> columns() {
+      return reader.columns();
+    }
+
+    @Override
+    public void setPageSource(PageReadStore pageStore) {
+      reader.setPageSource(pageStore);
     }
   }
 

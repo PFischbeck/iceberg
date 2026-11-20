@@ -56,6 +56,7 @@ import org.apache.parquet.io.api.Binary;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.LogicalTypeAnnotation;
 import org.apache.parquet.schema.LogicalTypeAnnotation.DecimalLogicalTypeAnnotation;
+import org.apache.parquet.schema.LogicalTypeAnnotation.FiniteVectorLogicalTypeAnnotation;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Type;
@@ -138,6 +139,28 @@ public class SparkParquetWriters {
           repeatedR,
           newOption(repeated.getType(0), elementWriter),
           sArray.elementType());
+    }
+
+    @Override
+    public ParquetValueWriter<?> vector(ArrayType sArray, GroupType vector) {
+      String[] repeatedPath = currentPath();
+
+      int repeatedD = type.getMaxDefinitionLevel(repeatedPath);
+      int repeatedR = type.getMaxRepetitionLevel(repeatedPath);
+
+      Type elementType = vector.getType(0).asGroupType().getType(0);
+      ColumnDescriptor elementDesc = type.getColumnDescription(path(elementType.getName()));
+      int dimension =
+          ((FiniteVectorLogicalTypeAnnotation) vector.getLogicalTypeAnnotation()).getNumElements();
+
+      return ParquetValueWriters.vectors(
+          dimension,
+          ArrayData::numElements,
+          new ArrayDataWriter<>(
+              repeatedD,
+              repeatedR,
+              ParquetValueWriters.vectorElements(elementDesc),
+              sArray.elementType()));
     }
 
     @Override

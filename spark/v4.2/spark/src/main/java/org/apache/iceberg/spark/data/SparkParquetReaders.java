@@ -187,6 +187,29 @@ public class SparkParquetReaders {
     }
 
     @Override
+    public ParquetValueReader<?> vector(Types.VectorType expectedVector, GroupType vector) {
+      if (expectedVector == null) {
+        return null;
+      }
+
+      String[] repeatedPath = currentPath();
+
+      int repeatedD = type.getMaxDefinitionLevel(repeatedPath) - 1;
+      int repeatedR = type.getMaxRepetitionLevel(repeatedPath) - 1;
+
+      Type elementType = vector.getType(0).asGroupType().getType(0);
+      ColumnDescriptor elementDesc = type.getColumnDescription(path(elementType.getName()));
+
+      return ParquetValueReaders.vectors(
+          expectedVector.dimension(),
+          ArrayData::numElements,
+          new ArrayReader<>(
+              repeatedD,
+              repeatedR,
+              ParquetValueReaders.vectorElements(elementDesc, expectedVector.elementType())));
+    }
+
+    @Override
     public ParquetValueReader<?> map(
         Types.MapType expectedMap,
         GroupType map,

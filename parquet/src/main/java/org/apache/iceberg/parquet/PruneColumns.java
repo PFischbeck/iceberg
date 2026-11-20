@@ -24,10 +24,12 @@ import java.util.Set;
 import org.apache.iceberg.relocated.com.google.common.base.Objects;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.types.Type.TypeID;
 import org.apache.iceberg.types.Types.ListType;
 import org.apache.iceberg.types.Types.MapType;
 import org.apache.iceberg.types.Types.NestedField;
 import org.apache.iceberg.types.Types.StructType;
+import org.apache.iceberg.types.Types.VectorType;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.LogicalTypeAnnotation;
 import org.apache.parquet.schema.MessageType;
@@ -160,6 +162,11 @@ class PruneColumns extends TypeWithSchemaVisitor<Type> {
   }
 
   @Override
+  public Type vector(VectorType expected, GroupType vector) {
+    return null;
+  }
+
+  @Override
   public Type primitive(
       org.apache.iceberg.types.Type.PrimitiveType expected, PrimitiveType primitive) {
     return null;
@@ -170,7 +177,9 @@ class PruneColumns extends TypeWithSchemaVisitor<Type> {
   }
 
   private boolean isStruct(Type field, NestedField expected) {
-    if (field.isPrimitive() || expected.type().isVariantType()) {
+    if (field.isPrimitive()
+        || expected.type().isVariantType()
+        || expected.type().typeId() == TypeID.VECTOR) {
       return false;
     } else {
       GroupType groupType = field.asGroupType();

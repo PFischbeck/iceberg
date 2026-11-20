@@ -43,7 +43,9 @@ public class ParquetTypeVisitor<T> {
       // if not a primitive, the typeId must be a group
       GroupType group = type.asGroupType();
       LogicalTypeAnnotation annotation = group.getLogicalTypeAnnotation();
-      if (LogicalTypeAnnotation.listType().equals(annotation)) {
+      if (ParquetVectors.isVector(group)) {
+        return visitor.vector(group);
+      } else if (LogicalTypeAnnotation.listType().equals(annotation)) {
         return visitList(group, visitor);
       } else if (LogicalTypeAnnotation.mapType().equals(annotation)) {
         return visitMap(group, visitor);
@@ -212,6 +214,10 @@ public class ParquetTypeVisitor<T> {
 
   public T variant(GroupType variant) {
     return null;
+  }
+
+  public T vector(GroupType vector) {
+    throw new UnsupportedOperationException("Not implemented for vector");
   }
 
   public void beforeField(Type type) {

@@ -19,6 +19,7 @@
 package org.apache.iceberg.data.parquet;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.apache.iceberg.parquet.ParquetValueWriter;
@@ -102,6 +103,23 @@ abstract class BaseParquetWriter<T> {
 
       return ParquetValueWriters.collections(
           repeatedD, repeatedR, ParquetValueWriters.option(elementType, elementD, elementWriter));
+    }
+
+    @Override
+    public ParquetValueWriter<?> vector(Types.VectorType iceberg, GroupType vector) {
+      String[] repeatedPath = currentPath();
+
+      int repeatedD = type.getMaxDefinitionLevel(repeatedPath);
+      int repeatedR = type.getMaxRepetitionLevel(repeatedPath);
+
+      Type elementType = vector.getType(0).asGroupType().getType(0);
+      ColumnDescriptor elementDesc = type.getColumnDescription(path(elementType.getName()));
+
+      return ParquetValueWriters.vectors(
+          iceberg.dimension(),
+          Collection::size,
+          ParquetValueWriters.collections(
+              repeatedD, repeatedR, ParquetValueWriters.vectorElements(elementDesc)));
     }
 
     @Override

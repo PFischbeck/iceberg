@@ -22,6 +22,7 @@ import java.util.ArrayDeque;
 import java.util.List;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.types.Type.TypeID;
 import org.apache.iceberg.types.Types;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.LogicalTypeAnnotation;
@@ -57,7 +58,11 @@ public class TypeWithSchemaVisitor<T> {
       // if not a primitive, the typeId must be a group
       GroupType group = type.asGroupType();
       LogicalTypeAnnotation annotation = group.getLogicalTypeAnnotation();
-      if (annotation instanceof ListLogicalTypeAnnotation) {
+      if (iType != null && iType.typeId() == TypeID.VECTOR) {
+        return visitVector((Types.VectorType) iType, group, visitor);
+      } else if (iType == null && ParquetVectors.isVector(group)) {
+        return visitor.vector(null, group);
+      } else if (annotation instanceof ListLogicalTypeAnnotation) {
         return visitList(iType, group, visitor);
       } else if (annotation instanceof MapLogicalTypeAnnotation) {
         return visitMap(iType, group, visitor);
@@ -96,6 +101,34 @@ public class TypeWithSchemaVisitor<T> {
       return visitTwoLevelList(list, element, group, listElement, visitor);
     } else {
       return visitThreeLevelList(list, element, group, listElement, visitor);
+    }
+  }
+
+  private static <T> T visitVector(
+      Types.VectorType iVector, GroupType group, TypeWithSchemaVisitor<T> visitor) {
+    Preconditions.checkArgument(
+        ParquetVectors.isVector(group),
+        "Cannot read %s as %s: not annotated as FINITE_VECTOR",
+        group,
+        iVector);
+    Preconditions.checkArgument(
+        ParquetVectors.dimension(group) == iVector.dimension(),
+        "Cannot read vector with dimension %s as %s",
+        ParquetVectors.dimension(group),
+        iVector);
+    Types.VectorType.ElementType fileType =
+        ParquetVectors.elementType(ParquetVectors.element(group));
+    Preconditions.checkArgument(
+        fileType == iVector.elementType(),
+        "Cannot read vector elements of type %s as %s",
+        fileType.typeName(),
+        iVector.elementType().typeName());
+
+    visitor.fieldNames.push(group.getFieldName(0));
+    try {
+      return visitor.vector(iVector, group);
+    } finally {
+      visitor.fieldNames.pop();
     }
   }
 
@@ -236,6 +269,14 @@ public class TypeWithSchemaVisitor<T> {
 
   public T map(Types.MapType iMap, GroupType map, T key, T value) {
     return null;
+  }
+
+  public T vector(Types.VectorType iVector, GroupType vector) {
+    if (iVector == null) {
+      return null;
+    }
+
+    throw new UnsupportedOperationException("Not implemented for vector");
   }
 
   public T variant(Types.VariantType iVariant, GroupType variant, T result) {

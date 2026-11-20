@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -135,6 +136,35 @@ public class ParquetValueWriters {
     return new FixedBufferWriter(desc);
   }
 
+  /**
+   * Returns a writer for the elements of a vector column.
+   *
+   * <p>The writer rejects null elements, non-finite floating-point elements, and float16 elements
+   * that are not exactly representable as IEEE 754 binary16.
+   */
+  public static ParquetValueWriter<?> vectorElements(ColumnDescriptor desc) {
+    ParquetValueWriter<?> writer =
+        switch (ParquetVectors.elementType(desc.getPrimitiveType())) {
+          case INT8 -> new ByteWriter(desc);
+          case INT -> new UnboxedWriter<Integer>(desc);
+          case LONG -> new UnboxedWriter<Long>(desc);
+          case FLOAT16 -> new Float16Writer(desc);
+          case FLOAT -> new FiniteFloatWriter(desc);
+          case DOUBLE -> new FiniteDoubleWriter(desc);
+        };
+
+    return new RequiredElementWriter<>(writer);
+  }
+
+  /**
+   * Wraps a list writer so that it rejects values that do not have exactly {@code dimension}
+   * elements.
+   */
+  public static <L> ParquetValueWriter<L> vectors(
+      int dimension, ToIntFunction<L> size, ParquetValueWriter<L> listWriter) {
+    return new VectorWriter<>(dimension, size, listWriter);
+  }
+
   public static <E> CollectionWriter<E> collections(int dl, int rl, ParquetValueWriter<E> writer) {
     return new CollectionWriter<>(dl, rl, writer);
   }
@@ -233,6 +263,45 @@ public class ParquetValueWriters {
     @Override
     public Stream<FieldMetrics<?>> metrics() {
       return Stream.of(doubleFieldMetricsBuilder.build());
+    }
+  }
+
+  private static class FiniteFloatWriter extends UnboxedWriter<Float> {
+    private FiniteFloatWriter(ColumnDescriptor desc) {
+      super(desc);
+    }
+
+    @Override
+    public void write(int repetitionLevel, Float value) {
+      Preconditions.checkArgument(
+          Float.isFinite(value), "Invalid float vector element: %s (must be finite)", value);
+      writeFloat(repetitionLevel, value);
+    }
+  }
+
+  private static class FiniteDoubleWriter extends UnboxedWriter<Double> {
+    private FiniteDoubleWriter(ColumnDescriptor desc) {
+      super(desc);
+    }
+
+    @Override
+    public void write(int repetitionLevel, Double value) {
+      Preconditions.checkArgument(
+          Double.isFinite(value), "Invalid double vector element: %s (must be finite)", value);
+      writeDouble(repetitionLevel, value);
+    }
+  }
+
+  private static class Float16Writer extends PrimitiveWriter<Float> {
+    private final byte[] bytes = new byte[2];
+
+    private Float16Writer(ColumnDescriptor desc) {
+      super(desc);
+    }
+
+    @Override
+    public void write(int repetitionLevel, Float value) {
+      column.writeBinary(repetitionLevel, ParquetVectors.writeFloat16(value, bytes));
     }
   }
 
@@ -603,6 +672,63 @@ public class ParquetValueWriters {
     @Override
     protected Iterator<E> elements(Collection<E> list) {
       return list.iterator();
+    }
+  }
+
+  private static class RequiredElementWriter<E> implements ParquetValueWriter<E> {
+    private final ParquetValueWriter<E> writer;
+
+    private RequiredElementWriter(ParquetValueWriter<E> writer) {
+      this.writer = writer;
+    }
+
+    @Override
+    public void write(int repetitionLevel, E value) {
+      Preconditions.checkArgument(value != null, "Invalid vector: elements must not be null");
+      writer.write(repetitionLevel, value);
+    }
+
+    @Override
+    public List<TripleWriter<?>> columns() {
+      return writer.columns();
+    }
+
+    @Override
+    public void setColumnStore(ColumnWriteStore columnStore) {
+      writer.setColumnStore(columnStore);
+    }
+  }
+
+  private static class VectorWriter<L> implements ParquetValueWriter<L> {
+    private final int dimension;
+    private final ToIntFunction<L> size;
+    private final ParquetValueWriter<L> writer;
+
+    private VectorWriter(int dimension, ToIntFunction<L> size, ParquetValueWriter<L> writer) {
+      this.dimension = dimension;
+      this.size = size;
+      this.writer = writer;
+    }
+
+    @Override
+    public void write(int repetitionLevel, L value) {
+      int numElements = size.applyAsInt(value);
+      Preconditions.checkArgument(
+          numElements == dimension,
+          "Invalid vector: expected %s elements but got %s",
+          dimension,
+          numElements);
+      writer.write(repetitionLevel, value);
+    }
+
+    @Override
+    public List<TripleWriter<?>> columns() {
+      return writer.columns();
+    }
+
+    @Override
+    public void setColumnStore(ColumnWriteStore columnStore) {
+      writer.setColumnStore(columnStore);
     }
   }
 
